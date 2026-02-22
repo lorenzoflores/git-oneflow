@@ -1,0 +1,97 @@
+#!/bin/bash
+
+# --- Configuración ---
+MAIN_BRANCH="main"
+
+# --- Funciones de ayuda ---
+show_help() {
+    echo "Uso: git one <comando> [nombre]"
+    echo ""
+    echo "Comandos disponibles:"
+    echo "  start <nombre>    Crea una rama de feature desde $MAIN_BRANCH"
+    echo "  finish            Mergea la rama actual en $MAIN_BRANCH y la borra"
+    echo "  hotfix <nombre>   Crea una rama de hotfix urgente desde $MAIN_BRANCH"
+    echo "  release <version> Crea una rama de release para preparar el despliegue"
+    echo "  sync              Actualiza $MAIN_BRANCH y limpia ramas locales"
+}
+
+# --- Lógica de comandos ---
+COMMAND=$1
+NAME=$2
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+case $COMMAND in
+    "start")
+        if [ -z "$NAME" ]; then echo "Error: Indica nombre de feature"; exit 1; fi
+        git checkout $MAIN_BRANCH && git pull origin $MAIN_BRANCH
+        git checkout -b "feature/$NAME"
+        echo "🚀 Feature '$NAME' lista para trabajar."
+        ;;
+
+    "hotfix")
+        if [ -z "$NAME" ]; then echo "Error: Indica nombre del hotfix"; exit 1; fi
+        git checkout $MAIN_BRANCH && git pull origin $MAIN_BRANCH
+        git checkout -b "hotfix/$NAME"
+        echo "⚠️ Hotfix '$NAME' creado desde $MAIN_BRANCH."
+        ;;
+
+    "release")
+        if [ -z "$NAME" ]; then echo "Error: Indica el número de versión (ej: 1.1.0)"; exit 1; fi
+        git checkout $MAIN_BRANCH && git pull origin $MAIN_BRANCH
+        git checkout -b "release/$NAME"
+        echo "📦 Preparando versión $NAME..."
+        ;;
+
+    "finish")
+        if [ "$CURRENT_BRANCH" == "$MAIN_BRANCH" ]; then
+            echo "Error: No puedes finalizar la rama $MAIN_BRANCH"; exit 1
+        fi
+        
+        echo "Finalizando $CURRENT_BRANCH con rebase..."
+        
+        # 1. Nos aseguramos de que main está al día
+        git checkout $MAIN_BRANCH
+        git pull origin $MAIN_BRANCH
+        
+        # 2. Volvemos a la rama de trabajo y hacemos el rebase sobre el main actualizado
+        git checkout "$CURRENT_BRANCH"
+        if ! git rebase $MAIN_BRANCH; then
+            echo "❌ Error: Hay conflictos en el rebase. Resuélvelos y luego haz 'git-oneflow finish' de nuevo."
+            exit 1
+        fi
+        
+        # 3. Ahora que la rama está "encima" de main, hacemos un merge fast-forward
+        git checkout $MAIN_BRANCH
+        git merge --ff-only "$CURRENT_BRANCH"
+        
+        # Opcional: Crear tag si es release o hotfix
+        if [[ "$CURRENT_BRANCH" == release/* || "$CURRENT_BRANCH" == hotfix/* ]]; then
+            TAG_NAME=${CURRENT_BRANCH#*/}
+            git tag -a "$TAG_NAME" -m "Versión $TAG_NAME"
+            echo "✅ Tag $TAG_NAME creado."
+        fi
+
+        # 4. Subimos y limpiamos
+        git push origin $MAIN_BRANCH --tags
+        git branch -d "$CURRENT_BRANCH"
+        
+        # Si la rama existía en el servidor, la borramos también
+        if git rev-parse --verify "origin/$CURRENT_BRANCH" >/dev/null 2>&1; then
+            git push origin --delete "$CURRENT_BRANCH"
+        fi
+
+        echo "🏁 Rama $CURRENT_BRANCH integrada limpiamente en $MAIN_BRANCH."
+        ;;
+
+
+    "sync")
+        git checkout $MAIN_BRANCH && git pull origin $MAIN_BRANCH
+        git remote prune origin
+        echo "🔄 Repositorio sincronizado y ramas muertas limpiadas."
+        ;;
+
+    *)
+        show_help
+        ;;
+esac
+
