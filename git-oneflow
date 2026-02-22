@@ -5,7 +5,7 @@ MAIN_BRANCH="main"
 
 # --- Funciones de ayuda ---
 show_help() {
-    echo "Uso: git one <comando> [nombre]"
+    echo "Uso: git-oneflow <comando> [nombre]"
     echo ""
     echo "Comandos disponibles:"
     echo "  start <nombre>    Crea una rama de feature desde $MAIN_BRANCH"
